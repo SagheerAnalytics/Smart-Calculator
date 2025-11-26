@@ -1,4 +1,3 @@
-
 import os
 from groq import Groq
 import streamlit as st
@@ -52,7 +51,6 @@ st.markdown("""
 st.title("🧮 Smart Calculator")
 st.markdown("<p style='color:#F8F8F2;'>Modern UI • Fast • Groq-Powered</p>", unsafe_allow_html=True)
 
-
 # -----------------------------------------------------------
 # FUNCTIONS
 # -----------------------------------------------------------
@@ -60,7 +58,7 @@ def create_groq_client():
     """Load Groq API key from environment."""
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        return None, "❌ GROQ_API_KEY is missing. Please add it in Colab Secrets."
+        return None, "❌ GROQ_API_KEY is missing. Please set it in Streamlit Secrets."
     try:
         return Groq(api_key=api_key), None
     except Exception as e:
@@ -108,61 +106,4 @@ if "last_calc" not in st.session_state:
 if st.button("Calculate"):
     try:
         result, sym = calculate(num1, num2, operation)
-        st.success(f"Result: {num1} {sym} {num2} = {result}")
-
-        st.session_state["last_calc"] = {
-            "num1": num1,
-            "num2": num2,
-            "symbol": sym,
-            "result": result,
-        }
-    except Exception as e:
-        st.error(str(e))
-
-st.markdown("</div>", unsafe_allow_html=True)
-st.divider()
-
-
-# -----------------------------------------------------------
-# AI EXPLANATION (GROQ)
-# -----------------------------------------------------------
-st.markdown("<div class='calculator-box'>", unsafe_allow_html=True)
-st.markdown("<h3 class='section-title'>2️⃣ AI Explanation (Groq LLM)</h3>", unsafe_allow_html=True)
-
-last = st.session_state["last_calc"]
-
-if last is None:
-    st.info("Perform a calculation first to get an AI explanation.")
-else:
-    default_prompt = (
-        f"Explain step by step how to compute {last['num1']} {last['symbol']} "
-        f"{last['num2']} to get {last['result']} in a simple beginner-friendly way."
-    )
-
-    user_prompt = st.text_area("Ask the AI anything about this calculation:", value=default_prompt)
-
-    if st.button("Explain with AI 🤖"):
-        client, err = create_groq_client()
-        if err:
-            st.error(err)
-        else:
-            with st.spinner("Groq is thinking..."):
-                try:
-                    reply = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role": "user", "content": user_prompt}],
-                    )
-
-                    st.subheader("📘 AI Explanation")
-                    st.write(reply.choices[0].message.content)
-
-                except Exception as e:
-                    st.error(f"Groq error: {e}")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-# FOOTER
-st.caption(
-    "Made with ❤️ using Streamlit + Groq • Fully modern UI • Beginner-friendly."
-)
+        st.success(f"Result
