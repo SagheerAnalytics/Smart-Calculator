@@ -32,10 +32,11 @@ st.markdown("""
         transform: scale(1.03);
     }
     .calculator-box {
-        background: rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.18);
         padding: 25px;
         border-radius: 15px;
         backdrop-filter: blur(10px);
+        margin-bottom: 20px;
     }
     .section-title {
         font-size: 26px !important;
@@ -44,12 +45,6 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
-# -----------------------------------------------------------
-# PAGE TITLE
-# -----------------------------------------------------------
-st.title("🧮 Smart Calculator")
-st.markdown("<p style='color:#F8F8F2;'>Modern UI • Fast • Groq-Powered</p>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------
 # FUNCTIONS
@@ -83,8 +78,10 @@ def calculate(a, b, op):
 # -----------------------------------------------------------
 # CALCULATOR UI
 # -----------------------------------------------------------
-st.markdown("<div class='calculator-box'>", unsafe_allow_html=True)
+st.title("🧮 Smart Calculator")
+st.markdown("<p style='color:#F8F8F2;'>Modern UI • Fast • Groq-Powered</p>", unsafe_allow_html=True)
 
+st.markdown("<div class='calculator-box'>", unsafe_allow_html=True)
 st.markdown("<h3 class='section-title'>1️⃣ Basic Calculator</h3>", unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
@@ -106,4 +103,60 @@ if "last_calc" not in st.session_state:
 if st.button("Calculate"):
     try:
         result, sym = calculate(num1, num2, operation)
-        st.success(f"Result
+        st.success(f"Result: {num1} {sym} {num2} = {result}")
+
+        st.session_state["last_calc"] = {
+            "num1": num1,
+            "num2": num2,
+            "symbol": sym,
+            "result": result,
+        }
+    except Exception as e:
+        st.error(str(e))
+
+st.markdown("</div>", unsafe_allow_html=True)
+st.divider()
+
+
+# -----------------------------------------------------------
+# AI EXPLANATION
+# -----------------------------------------------------------
+st.markdown("<div class='calculator-box'>", unsafe_allow_html=True)
+st.markdown("<h3 class='section-title'>2️⃣ AI Explanation (Groq LLM)</h3>", unsafe_allow_html=True)
+
+last = st.session_state["last_calc"]
+
+if last is None:
+    st.info("Perform a calculation first to get an AI explanation.")
+else:
+    default_prompt = (
+        f"Explain step by step how to compute {last['num1']} {last['symbol']} "
+        f"{last['num2']} to get {last['result']} in a simple beginner-friendly way."
+    )
+
+    user_prompt = st.text_area("Ask the AI anything about this calculation:", value=default_prompt)
+
+    if st.button("Explain with AI 🤖"):
+        client, err = create_groq_client()
+        if err:
+            st.error(err)
+        else:
+            with st.spinner("Groq is thinking..."):
+                try:
+                    reply = client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[{"role": "user", "content": user_prompt}],
+                    )
+
+                    st.subheader("📘 AI Explanation")
+                    st.write(reply.choices[0].message.content)
+
+                except Exception as e:
+                    st.error(f"Groq error: {e}")
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# -----------------------------------------------------------
+# FOOTER
+# -----------------------------------------------------------
+st.caption("Made with ❤️ using Streamlit + Groq • Fully modern UI • Beginner-friendly.")
