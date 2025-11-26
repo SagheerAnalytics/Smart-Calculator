@@ -1,10 +1,9 @@
-
 import os
 import math
 from groq import Groq
 import streamlit as st
 
-# ---- HCI: basic page setup ----
+# ---- Page setup (HCI: clear, centered, friendly) ----
 st.set_page_config(
     page_title="Smart Calculator (Groq-powered)",
     page_icon="🧮",
@@ -12,32 +11,26 @@ st.set_page_config(
 )
 
 st.title("🧮 Smart Calculator")
-st.caption("A simple, beginner-friendly calculator with AI explanations (Groq LLM).")
+st.caption("A simple calculator with AI explanations and natural language support (Groq LLM).")
 
-st.markdown(
-    """
-    ### How to use
-    1. Enter two numbers.
-    2. Choose an operation.
-    3. Click **Calculate** to see the result.
-    4. (Optional) Click **Explain with AI** to get a step-by-step explanation.
-
-    ---
-    """
-)
+# ---- Session state for history ----
+if "history" not in st.session_state:
+    st.session_state["history"] = []  # list of dicts: {expression, result}
 
 # ---- Helper functions ----
 
-def create_groq_client():
-    """Create a Groq client using the API key from environment variable."""
+@st.cache_resource
+def get_groq_client():
+    """Create and cache a Groq client using the GROQ_API_KEY env var."""
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        return None, "GROQ_API_KEY is missing. Set it in Colab secrets and environment."
+        return None
     try:
         client = Groq(api_key=api_key)
-        return client, None
-    except Exception as e:
-        return None, f"Error creating Groq client: {e}"
+        return client
+    except Exception:
+        return None
+
 
 def calculate(a, b, op_label):
     """Perform the selected arithmetic operation."""
@@ -51,11 +44,48 @@ def calculate(a, b, op_label):
         if b == 0:
             raise ZeroDivisionError("Cannot divide by zero.")
         return a / b, "÷"
+    elif op_label == "Power (a^b)":
+        # guard against insane exponents
+        if abs(b) > 1000:
+            raise ValueError("Exponent too large")
+        result = a ** b
+        if not math.isfinite(result):
+            raise OverflowError("Result not finite")
+        return result, "^"
+    elif op_label == "Percentage (a% of b)":
+        # "a percent of b" -> (a / 100) * b
+        return (a / 100.0) * b, "% of"
     else:
         raise ValueError("Unknown operation selected.")
 
-# ---- UI: Calculator Section (HCI: clear layout & controls) ----
 
+def add_to_history(expression, result):
+    """Store a calculation in history (latest on top, max 10 items)."""
+    st.session_state["history"].insert(0, {
+        "expression": expression,
+        "result": result
+    })
+    st.session_state["history"] = st.session_state["history"][:10]
+
+
+# ---- Sidebar: History panel (HCI: always visible context) ----
+with st.sidebar:
+    st.header("📜 History")
+    if st.session_state["history"]:
+        for item in st.session_state["history"]:
+            st.write(f"{item['expression']} = **{item['result']}**")
+        if st.button("🧹 Clear history"):
+            st.session_state["history"] = []
+            st.experimental_rerun()
+    else:
+        st.info("No calculations yet.")
+
+
+# =========================
+# 1️⃣ BASIC CALCULATOR
+# =========================
+
+st.markdown("---")
 st.header("1️⃣ Basic Calculator")
 
 col1, col2 = st.columns(2)
@@ -65,10 +95,16 @@ with col1:
 with col2:
     num2 = st.number_input("Second number", value=0.0, format="%.6f")
 
-operation = st.radio(
+operation = st.selectbox(
     "Choose operation",
-    ["Add (+)", "Subtract (-)", "Multiply (×)", "Divide (÷)"],
-    horizontal=True
+    [
+        "Add (+)",
+        "Subtract (-)",
+        "Multiply (×)",
+        "Divide (÷)",
+        "Power (a^b)",
+        "Percentage (a% of b)",
+    ]
 )
 
 calc_button = st.button("✅ Calculate")
@@ -79,14 +115,25 @@ if "last_calc" not in st.session_state:
 if calc_button:
     try:
         result, symbol = calculate(num1, num2, operation)
-        st.success(f"Result: {num1} {symbol} {num2} = {result}")
-        # Store last calculation in session state for AI explanation
+
+        # Build a human-readable expression string
+        if symbol == "% of":
+            expression = f"{num1}% of {num2}"
+        else:
+            expression = f"{num1} {symbol} {num2}"
+
+        st.success(f"Result: {expression} = {result}")
+
+        # Store last calculation and add to history
         st.session_state["last_calc"] = {
             "num1": num1,
             "num2": num2,
             "symbol": symbol,
             "result": result,
+            "expression": expression,
         }
+        add_to_history(expression, result)
+
     except ZeroDivisionError as zde:
         st.error(f"⚠️ {zde}")
         st.session_state["last_calc"] = None
@@ -94,18 +141,21 @@ if calc_button:
         st.error(f"Unexpected error: {e}")
         st.session_state["last_calc"] = None
 
-st.divider()
 
-# ---- UI: AI Explanation Section (Groq) ----
+st.markdown("---")
 
-st.header("2️⃣ Ask Groq to Explain the Calculation")
+# =========================
+# 2️⃣ AI EXPLANATION OF LAST CALC
+# =========================
+
+st.header("2️⃣ Ask Groq to Explain the Last Calculation")
 
 if st.session_state["last_calc"] is None:
     st.info("First perform a calculation above, then you can ask Groq to explain it.")
 else:
     lc = st.session_state["last_calc"]
     default_prompt = (
-        f"Explain step by step how to compute {lc['num1']} {lc['symbol']} {lc['num2']} "
+        f"Explain step by step how to compute {lc['expression']} "
         f"to get {lc['result']}. Use simple language for a beginner."
     )
 
@@ -115,16 +165,16 @@ else:
         height=120
     )
 
-    explain_button = st.button("🤖 Explain with AI (Groq)")
+    explain_button = st.button("🤖 Explain this calculation with AI (Groq)")
 
     if explain_button:
-        client, err = create_groq_client()
-        if err:
-            st.error(f"❌ {err}")
+        client = get_groq_client()
+        if client is None:
+            st.error("❌ GROQ_API_KEY is missing or Groq client could not be created. "
+                     "Set the key in Streamlit Secrets (recommended) or as an env var.")
         else:
             with st.spinner("Asking Groq to explain..."):
                 try:
-                    # Your exact Groq usage pattern
                     chat_completion = client.chat.completions.create(
                         messages=[
                             {
@@ -142,7 +192,64 @@ else:
                 except Exception as e:
                     st.error(f"Error while contacting Groq: {e}")
 
+
+st.markdown("---")
+
+# =========================
+# 3️⃣ NATURAL LANGUAGE CALCULATOR (AI)
+# =========================
+
+st.header("3️⃣ Natural Language Calculator (AI)")
+
+st.write(
+    "Type a math question in plain English, e.g. "
+    "_\"What is 12 divided by 3 plus 4?\"_. The AI will solve it and explain."
+)
+
+nl_question = st.text_input(
+    "Your question:",
+    value="What is 12 divided by 3 plus 4?",
+    placeholder="Type a math question in natural language..."
+)
+
+ask_ai_button = st.button("🧠 Ask AI to Calculate")
+
+if ask_ai_button:
+    if not nl_question.strip():
+        st.warning("Please enter a question first.")
+    else:
+        client = get_groq_client()
+        if client is None:
+            st.error("❌ GROQ_API_KEY is missing or Groq client could not be created. "
+                     "Set the key in Streamlit Secrets (recommended) or as an env var.")
+        else:
+            with st.spinner("Asking Groq to solve your question..."):
+                try:
+                    prompt = (
+                        "You are a careful math tutor. Solve the following math question, "
+                        "then give the final numeric answer and explain it step by step "
+                        "in very simple language for a beginner.\n\n"
+                        f"Question: {nl_question}"
+                    )
+
+                    chat_completion = client.chat.completions.create(
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": prompt,
+                            }
+                        ],
+                        model="llama-3.3-70b-versatile",
+                    )
+
+                    answer_text = chat_completion.choices[0].message.content
+                    st.subheader("AI Answer")
+                    st.write(answer_text)
+
+                except Exception as e:
+                    st.error(f"Error while contacting Groq: {e}")
+
 st.caption(
-    "Designed with basic HCI principles: clear labels, immediate feedback, simple layout, "
-    "and helpful error messages."
+    "Designed with HCI principles: clear layout, visible history, friendly messages, "
+    "and step-by-step AI explanations."
 )
